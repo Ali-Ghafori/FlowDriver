@@ -16,13 +16,16 @@ import (
 	"github.com/NullLatency/flow-driver/internal/transport"
 )
 
+// version is set at build time via -ldflags "-X main.version=vX.Y.Z"
+var version = "dev"
+
 func main() {
 	var configPath, gcPath string
 	flag.StringVar(&configPath, "c", "config.json", "Path to config file")
 	flag.StringVar(&gcPath, "gc", "credentials.json", "Path to Google Service Account JSON")
 	flag.Parse()
 
-	log.Println("Starting Flow Server...")
+	log.Printf("Starting Flow Server %s...", version)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

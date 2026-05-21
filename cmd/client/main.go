@@ -34,13 +34,16 @@ func (rawResolver) Resolve(ctx context.Context, name string) (context.Context, n
 	return ctx, nil, nil
 }
 
+// version is set at build time via -ldflags "-X main.version=vX.Y.Z"
+var version = "dev"
+
 func main() {
 	var configPath, gcPath string
 	flag.StringVar(&configPath, "c", "config.json", "Path to config file")
 	flag.StringVar(&gcPath, "gc", "credentials.json", "Path to Google Service Account JSON")
 	flag.Parse()
 
-	log.Println("Starting Flow Client...")
+	log.Printf("Starting Flow Client %s...", version)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
