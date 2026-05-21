@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -38,8 +39,8 @@ type Engine struct {
 	// Concurrency control for storage operations (Upload/Download)
 	sem chan struct{}
 
-	// Track processed files to avoid duplicates
-	processed   map[string]bool
+	// Track processed files to avoid duplicates; value is the time first seen for TTL eviction
+	processed   map[string]time.Time
 	processedMu sync.Mutex
 }
 
@@ -49,7 +50,7 @@ func NewEngine(backend storage.Backend, isClient bool, clientID string) *Engine 
 		id:             clientID,
 		sessions:       make(map[string]*Session),
 		closedSessions: make(map[string]time.Time),
-		processed:      make(map[string]bool),
+		processed:      make(map[string]time.Time),
 		// Default intervals: Poll (RX) fast for responsiveness, Flush (TX) slower for gathering
 		pollTicker:  500 * time.Millisecond,
 		flushTicker: 300 * time.Millisecond,
@@ -65,16 +66,6 @@ func NewEngine(backend storage.Backend, isClient bool, clientID string) *Engine 
 	// Limit to 8 concurrent upload/download operations to avoid OOM and FD exhaustion
 	e.sem = make(chan struct{}, 8)
 	return e
-}
-
-func (e *Engine) SetRefreshRate(ms int) {
-	if ms > 0 {
-		e.pollTicker = time.Duration(ms) * time.Millisecond
-		// Legacy behavior: sets both if FlushTicker was still at default
-		if e.flushTicker == 300*time.Millisecond {
-			e.flushTicker = time.Duration(ms) * time.Millisecond
-		}
-	}
 }
 
 func (e *Engine) SetIdleTimeout(sec int) {
@@ -197,19 +188,25 @@ func (e *Engine) flushAll(ctx context.Context) {
 			e.sem <- struct{}{}        // Acquire
 			defer func() { <-e.sem }() // Release
 
-			pr, pw := io.Pipe()
-			go func() {
-				defer pw.Close()
-				for _, env := range m {
-					if err := env.Encode(pw); err != nil {
-						log.Printf("mux encode error: %v", err)
-						break
-					}
+			var buf bytes.Buffer
+			for _, env := range m {
+				if err := env.Encode(&buf); err != nil {
+					log.Printf("mux encode error: %v", err)
+					return
 				}
-			}()
+			}
+			data := buf.Bytes()
 
-			if err := e.backend.Upload(ctx, fname, pr); err != nil {
-				log.Printf("upload error %s: %v", fname, err)
+			for attempt := range 3 {
+				if err := e.backend.Upload(ctx, fname, bytes.NewReader(data)); err != nil {
+					if attempt < 2 && ctx.Err() == nil {
+						log.Printf("upload error %s (attempt %d/3): %v", fname, attempt+1, err)
+						time.Sleep(time.Duration(1<<uint(attempt)) * time.Second)
+						continue
+					}
+					log.Printf("upload error %s: %v", fname, err)
+				}
+				break
 			}
 		}(filename, mux)
 	}
@@ -301,9 +298,9 @@ func (e *Engine) pollLoop(ctx context.Context) {
 				}
 
 				e.processedMu.Lock()
-				already := e.processed[f]
+				_, already := e.processed[f]
 				if !already {
-					e.processed[f] = true
+					e.processed[f] = time.Now()
 				}
 				e.processedMu.Unlock()
 
@@ -429,10 +426,12 @@ func (e *Engine) cleanupLoop(ctx context.Context) {
 			}
 			e.closedSessionsMu.Unlock()
 
-			// Periodically clear processed map to prevent infinite growth
+			// Evict processed-map entries older than 2 minutes (files live ~10s max)
 			e.processedMu.Lock()
-			if len(e.processed) > 5000 {
-				e.processed = make(map[string]bool)
+			for k, t := range e.processed {
+				if time.Since(t) > 2*time.Minute {
+					delete(e.processed, k)
+				}
 			}
 			e.processedMu.Unlock()
 

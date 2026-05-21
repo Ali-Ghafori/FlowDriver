@@ -280,54 +280,63 @@ func (b *GoogleBackend) ListQuery(ctx context.Context, prefix string) ([]string,
 		q += fmt.Sprintf(" and '%s' in parents", b.folderID)
 	}
 
-	u, _ := url.Parse("https://www.googleapis.com/drive/v3/files")
-	v := u.Query()
-	v.Set("q", q)
-	v.Set("fields", "files(id, name)")
-	u.RawQuery = v.Encode()
-
-	req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+tok)
-
-	resp, err := b.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("list returned %d: %s", resp.StatusCode, string(body))
-	}
-
-	var resData struct {
-		Files []struct {
-			ID   string `json:"id"`
-			Name string `json:"name"`
-		} `json:"files"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&resData); err != nil {
-		return nil, err
-	}
-
-	b.fileIdsMu.Lock()
-	// SAFETY: Prevent fileIDs map from infinite growth
-	if len(b.fileIDs) > 2000 {
-		b.fileIDs = make(map[string]string)
-	}
-
 	var names []string
-	for _, f := range resData.Files {
-		// Only collect exact prefix matches client-side just in case
-		if strings.HasPrefix(f.Name, prefix) {
-			b.fileIDs[f.Name] = f.ID
-			names = append(names, f.Name)
+	pageToken := ""
+	for {
+		u, _ := url.Parse("https://www.googleapis.com/drive/v3/files")
+		v := u.Query()
+		v.Set("q", q)
+		v.Set("fields", "nextPageToken,files(id,name)")
+		v.Set("pageSize", "1000")
+		if pageToken != "" {
+			v.Set("pageToken", pageToken)
 		}
+		u.RawQuery = v.Encode()
+
+		req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Authorization", "Bearer "+tok)
+
+		resp, err := b.httpClient.Do(req)
+		if err != nil {
+			return nil, err
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			return nil, fmt.Errorf("list returned %d: %s", resp.StatusCode, string(body))
+		}
+
+		var resData struct {
+			NextPageToken string `json:"nextPageToken"`
+			Files         []struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+			} `json:"files"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&resData); err != nil {
+			resp.Body.Close()
+			return nil, err
+		}
+		resp.Body.Close()
+
+		b.fileIdsMu.Lock()
+		for _, f := range resData.Files {
+			if strings.HasPrefix(f.Name, prefix) {
+				b.fileIDs[f.Name] = f.ID
+				names = append(names, f.Name)
+			}
+		}
+		b.fileIdsMu.Unlock()
+
+		if resData.NextPageToken == "" {
+			break
+		}
+		pageToken = resData.NextPageToken
 	}
-	b.fileIdsMu.Unlock()
 
 	return names, nil
 }

@@ -28,42 +28,9 @@ const (
 	MagicByte = 0x1F
 )
 
-// MarshalBinary serializes the envelope into the custom Flow binary format.
-func (e *Envelope) MarshalBinary() ([]byte, error) {
-	totalSize := 1 + 1 + len(e.SessionID) + 8 + 1 + len(e.TargetAddr) + 1 + 4 + len(e.Payload)
-	buf := make([]byte, totalSize)
-	
-	buf[0] = MagicByte
-	buf[1] = uint8(len(e.SessionID))
-	offset := 2
-	copy(buf[offset:], e.SessionID)
-	offset += len(e.SessionID)
-	
-	binary.BigEndian.PutUint64(buf[offset:], e.Seq)
-	offset += 8
-	
-	buf[offset] = uint8(len(e.TargetAddr))
-	offset++
-	copy(buf[offset:], e.TargetAddr)
-	offset += len(e.TargetAddr)
-	
-	if e.Close {
-		buf[offset] = 1
-	} else {
-		buf[offset] = 0
-	}
-	offset++
-	
-	binary.BigEndian.PutUint32(buf[offset:], uint32(len(e.Payload)))
-	offset += 4
-	
-	copy(buf[offset:], e.Payload)
-	return buf, nil
-}
-
 // Encode writes the envelope directly to an io.Writer.
 func (e *Envelope) Encode(w io.Writer) error {
-	var hdr [512]byte // Sufficient for most metadata (SID + TargetAddr)
+	var hdr [1024]byte // magic(1)+sidLen(1)+sid(≤255)+seq(8)+addrLen(1)+addr(≤255)+close(1)+payLen(4) = max 526
 	hdr[0] = MagicByte
 	hdr[1] = uint8(len(e.SessionID))
 	copy(hdr[2:], e.SessionID)
@@ -97,52 +64,6 @@ func (e *Envelope) Encode(w io.Writer) error {
 	return nil
 }
 
-// UnmarshalBinary deserializes the envelope from the custom Flow binary format.
-// It returns the number of bytes read or an error.
-func (e *Envelope) UnmarshalBinary(data []byte) (int, error) {
-	if len(data) < 1 {
-		return 0, io.ErrUnexpectedEOF
-	}
-	if data[0] != MagicByte {
-		return 0, fmt.Errorf("invalid magic byte: expected 0x%X, got 0x%X", MagicByte, data[0])
-	}
-	
-	offset := 1
-	if len(data) < offset+1 { return 0, io.ErrUnexpectedEOF }
-	sidLen := int(data[offset])
-	offset++
-	
-	if len(data) < offset+sidLen { return 0, io.ErrUnexpectedEOF }
-	e.SessionID = string(data[offset : offset+sidLen])
-	offset += sidLen
-	
-	if len(data) < offset+8 { return 0, io.ErrUnexpectedEOF }
-	e.Seq = binary.BigEndian.Uint64(data[offset:])
-	offset += 8
-	
-	if len(data) < offset+1 { return 0, io.ErrUnexpectedEOF }
-	addrLen := int(data[offset])
-	offset++
-	
-	if len(data) < offset+addrLen { return 0, io.ErrUnexpectedEOF }
-	e.TargetAddr = string(data[offset : offset+addrLen])
-	offset += addrLen
-	
-	if len(data) < offset+1 { return 0, io.ErrUnexpectedEOF }
-	e.Close = data[offset] == 1
-	offset++
-	
-	if len(data) < offset+4 { return 0, io.ErrUnexpectedEOF }
-	payloadLen := int(binary.BigEndian.Uint32(data[offset:]))
-	offset += 4
-	
-	if len(data) < offset+payloadLen { return 0, io.ErrUnexpectedEOF }
-	e.Payload = make([]byte, payloadLen)
-	copy(e.Payload, data[offset:offset+payloadLen])
-	offset += payloadLen
-	
-	return offset, nil
-}
 // Decode reads an envelope from an io.Reader.
 func (e *Envelope) Decode(r io.Reader) error {
 	var hdr [2]byte

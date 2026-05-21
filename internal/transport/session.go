@@ -39,7 +39,7 @@ func NewSession(id string) *Session {
 		ID:           id,
 		rxQueue:      make(map[uint64]*Envelope),
 		lastActivity: time.Now(),
-		RxChan:       make(chan []byte, 1024),
+		RxChan:       make(chan []byte, 32768),
 	}
 	s.txCond = sync.NewCond(&s.mu)
 	return s
@@ -57,13 +57,6 @@ func (s *Session) EnqueueTx(data []byte) {
 
 	s.txBuf = append(s.txBuf, data...)
 	s.lastActivity = time.Now()
-}
-
-func (s *Session) ClearTx() {
-	s.mu.Lock()
-	s.txBuf = nil
-	s.txCond.Broadcast() // Wake up any writers blocked on backpressure
-	s.mu.Unlock()
 }
 
 func (s *Session) ProcessRx(env *Envelope) {
