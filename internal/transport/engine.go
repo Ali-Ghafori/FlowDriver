@@ -345,17 +345,15 @@ func (e *Engine) pollLoop(ctx context.Context) {
 						}
 						count++
 
-						// Process envelope immediately
-						e.closedSessionsMu.Lock()
-						if _, exists := e.closedSessions[env.SessionID]; exists {
-							e.closedSessionsMu.Unlock()
-							continue
-						}
-						e.closedSessionsMu.Unlock()
-
+						// Process envelope — check tombstone + session existence atomically
+						// under sessionMu to prevent the TOCTOU race where a session is
+						// removed and re-created before its tombstone is visible.
 						e.sessionMu.Lock()
+						e.closedSessionsMu.Lock()
+						_, tombstoned := e.closedSessions[env.SessionID]
+						e.closedSessionsMu.Unlock()
 						s, exists := e.sessions[env.SessionID]
-						if !exists && e.myDir == DirRes && e.OnNewSession != nil {
+						if !exists && !tombstoned && e.myDir == DirRes && e.OnNewSession != nil {
 							s = NewSession(env.SessionID)
 							s.ClientID = fileClientID
 							e.sessions[env.SessionID] = s
@@ -364,6 +362,9 @@ func (e *Engine) pollLoop(ctx context.Context) {
 							e.OnNewSession(env.SessionID, env.TargetAddr, s)
 						} else {
 							e.sessionMu.Unlock()
+							if tombstoned {
+								continue
+							}
 						}
 
 						if s != nil {
@@ -390,12 +391,13 @@ func (e *Engine) RemoveSession(id string) {
 	e.sessionMu.Lock()
 	s := e.sessions[id]
 	delete(e.sessions, id)
-	e.sessionMu.Unlock()
-
-	// Add to tombstone list
+	// Set tombstone atomically while holding sessionMu so pollLoop's
+	// combined check (exists + tombstone) can never see a window where
+	// the session is gone but not yet tombstoned.
 	e.closedSessionsMu.Lock()
 	e.closedSessions[id] = time.Now()
 	e.closedSessionsMu.Unlock()
+	e.sessionMu.Unlock()
 
 	// Unblock any goroutine blocked on <-session.RxChan (e.g. server-side Rx→Conn loop)
 	if s != nil {
