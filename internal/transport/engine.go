@@ -318,10 +318,17 @@ func (e *Engine) pollLoop(ctx context.Context) {
 					// log.Printf("Engine.pollLoop: Downloading %s", fname)
 					rc, err := e.backend.Download(ctx, fname)
 					if err != nil {
-						log.Printf("download error %s: %v", fname, err)
-						e.processedMu.Lock()
-						delete(e.processed, fname) // failed to download, retry next poll
-						e.processedMu.Unlock()
+						if strings.Contains(err.Error(), "404") {
+							// File deleted by peer's cleanup before we downloaded it.
+							// Keep it in the processed map — no retry, it's gone.
+							log.Printf("download 404 (cleanup race, increase idle window if frequent): %s", fname)
+						} else {
+							// Transient error — remove from processed to retry next poll
+							log.Printf("download error %s: %v", fname, err)
+							e.processedMu.Lock()
+							delete(e.processed, fname)
+							e.processedMu.Unlock()
+						}
 						return
 					}
 					defer rc.Close()
@@ -460,7 +467,7 @@ func (e *Engine) cleanupLoop(ctx context.Context) {
 					ts, err := strconv.ParseInt(tsStr, 10, 64)
 					if err == nil {
 						t := time.Unix(0, ts)
-						if time.Since(t) > 10*time.Second {
+						if time.Since(t) > 60*time.Second {
 							e.backend.Delete(ctx, f)
 						}
 					}
