@@ -1,6 +1,6 @@
 {
   "storage_type": "google",
-  "refresh_rate_ms": 100,
-  "flush_rate_ms": 300,
+  "refresh_rate_ms": 400,
+  "flush_rate_ms": 800,
   "idle_timeout_sec": 300
 }
