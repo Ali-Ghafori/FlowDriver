@@ -78,6 +78,9 @@ func main() {
 	if appCfg.FlushRateMs > 0 {
 		engine.SetFlushRate(appCfg.FlushRateMs)
 	}
+	if appCfg.IdleTimeoutSec > 0 {
+		engine.SetIdleTimeout(appCfg.IdleTimeoutSec)
+	}
 
 	// Called by polling loop when a new incoming session file is found
 	engine.OnNewSession = func(sessionID, targetAddr string, session *transport.Session) {
@@ -109,7 +112,7 @@ func handleServerConn(sessionID, targetAddr string, session *transport.Session, 
 
 	// Conn -> Tx (Res)
 	go func() {
-		buf := make([]byte, 4096)
+		buf := make([]byte, 32768)
 		for {
 			n, err := conn.Read(buf)
 			if n > 0 {

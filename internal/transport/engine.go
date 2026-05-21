@@ -30,6 +30,7 @@ type Engine struct {
 
 	pollTicker  time.Duration
 	flushTicker time.Duration
+	idleTimeout time.Duration
 
 	// Server mode handler: called when a new session is discovered
 	OnNewSession func(sessionID, targetAddr string, s *Session)
@@ -52,6 +53,7 @@ func NewEngine(backend storage.Backend, isClient bool, clientID string) *Engine 
 		// Default intervals: Poll (RX) fast for responsiveness, Flush (TX) slower for gathering
 		pollTicker:  500 * time.Millisecond,
 		flushTicker: 300 * time.Millisecond,
+		idleTimeout: 300 * time.Second,
 	}
 	if isClient {
 		e.myDir = DirReq
@@ -72,6 +74,12 @@ func (e *Engine) SetRefreshRate(ms int) {
 		if e.flushTicker == 300*time.Millisecond {
 			e.flushTicker = time.Duration(ms) * time.Millisecond
 		}
+	}
+}
+
+func (e *Engine) SetIdleTimeout(sec int) {
+	if sec > 0 {
+		e.idleTimeout = time.Duration(sec) * time.Second
 	}
 }
 
@@ -134,8 +142,8 @@ func (e *Engine) flushAll(ctx context.Context) {
 	for _, s := range sessions {
 		s.mu.Lock()
 
-		// Idle Timeout check
-		if time.Since(s.lastActivity) > 10*time.Second {
+		// Idle Timeout check — default 300s, tunable via config for long AI API calls
+		if time.Since(s.lastActivity) > e.idleTimeout {
 			s.closed = true
 		}
 
@@ -383,6 +391,7 @@ func (e *Engine) pollLoop(ctx context.Context) {
 
 func (e *Engine) RemoveSession(id string) {
 	e.sessionMu.Lock()
+	s := e.sessions[id]
 	delete(e.sessions, id)
 	e.sessionMu.Unlock()
 
@@ -390,6 +399,16 @@ func (e *Engine) RemoveSession(id string) {
 	e.closedSessionsMu.Lock()
 	e.closedSessions[id] = time.Now()
 	e.closedSessionsMu.Unlock()
+
+	// Unblock any goroutine blocked on <-session.RxChan (e.g. server-side Rx→Conn loop)
+	if s != nil {
+		s.mu.Lock()
+		if !s.rxClosed {
+			s.rxClosed = true
+			close(s.RxChan)
+		}
+		s.mu.Unlock()
+	}
 }
 
 func (e *Engine) cleanupLoop(ctx context.Context) {

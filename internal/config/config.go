@@ -31,6 +31,10 @@ type AppConfig struct {
 	// FlushRateMs is the gathering (TX) interval in milliseconds for the engine.
 	FlushRateMs int `json:"flush_rate_ms,omitempty"`
 
+	// IdleTimeoutSec is how long a session can be idle (no data in either direction)
+	// before being closed. Default 300s. Increase for long-running AI API calls.
+	IdleTimeoutSec int `json:"idle_timeout_sec,omitempty"`
+
 	// Transport configures the dpi-evasion layer.
 	Transport httpclient.TransportConfig `json:"transport,omitempty"`
 }

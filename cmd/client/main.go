@@ -100,6 +100,9 @@ func main() {
 	if appCfg.FlushRateMs > 0 {
 		engine.SetFlushRate(appCfg.FlushRateMs)
 	}
+	if appCfg.IdleTimeoutSec > 0 {
+		engine.SetIdleTimeout(appCfg.IdleTimeoutSec)
+	}
 	engine.Start(ctx)
 
 	listenAddr := appCfg.ListenAddr
