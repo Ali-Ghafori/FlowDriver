@@ -135,6 +135,7 @@ func (e *Engine) flushAll(ctx context.Context) {
 
 		// Idle Timeout check — default 300s, tunable via config for long AI API calls
 		if time.Since(s.lastActivity) > e.idleTimeout {
+			log.Printf("Engine: session %s idle for %.0fs, closing", s.ID, e.idleTimeout.Seconds())
 			s.closed = true
 		}
 

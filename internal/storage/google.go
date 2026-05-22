@@ -258,6 +258,7 @@ func (b *GoogleBackend) Upload(ctx context.Context, filename string, data io.Rea
 
 	resp, err := b.httpClient.Do(req)
 	if err != nil {
+		pr.CloseWithError(err) // Unblock the pipe-writer goroutine
 		return err
 	}
 	defer resp.Body.Close()
