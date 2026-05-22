@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
@@ -161,13 +162,20 @@ func (b *GoogleBackend) exchangeCode(ctx context.Context, code string) error {
 }
 
 func (b *GoogleBackend) refreshAccessToken(ctx context.Context) error {
+	log.Printf("GoogleBackend: refreshing OAuth token (expired %s)", b.tokenEx.Format("15:04:05"))
 	v := url.Values{}
 	v.Set("grant_type", "refresh_token")
 	v.Set("refresh_token", b.refreshToken)
 	v.Set("client_id", b.clientID)
 	v.Set("client_secret", b.clientSecret)
 
-	return b.executeTokenRequest(ctx, v)
+	err := b.executeTokenRequest(ctx, v)
+	if err != nil {
+		log.Printf("GoogleBackend: token refresh FAILED: %v", err)
+	} else {
+		log.Printf("GoogleBackend: token refreshed, next expiry %s", b.tokenEx.Format("15:04:05"))
+	}
+	return err
 }
 
 func (b *GoogleBackend) executeTokenRequest(ctx context.Context, v url.Values) error {

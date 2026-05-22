@@ -103,12 +103,13 @@ func main() {
 func handleServerConn(sessionID, targetAddr string, session *transport.Session, engine *transport.Engine) {
 	defer engine.RemoveSession(sessionID)
 
+	log.Printf("Server[%s]: dialing %s", sessionID, targetAddr)
 	conn, err := net.Dial("tcp", targetAddr)
 	if err != nil {
-		log.Printf("Dial error to %s: %v", targetAddr, err)
-		// Send back a close packet? Just closing the session will notify client
+		log.Printf("Server[%s]: dial FAILED to %s: %v", sessionID, targetAddr, err)
 		return
 	}
+	log.Printf("Server[%s]: connected to %s", sessionID, targetAddr)
 	defer conn.Close()
 
 	errCh := make(chan error, 2)
@@ -122,7 +123,7 @@ func handleServerConn(sessionID, targetAddr string, session *transport.Session, 
 				session.EnqueueTx(buf[:n])
 			}
 			if err != nil {
-				errCh <- err
+				errCh <- fmt.Errorf("target read: %w", err)
 				return
 			}
 		}
@@ -138,12 +139,13 @@ func handleServerConn(sessionID, targetAddr string, session *transport.Session, 
 			}
 			if len(data) > 0 {
 				if _, err := conn.Write(data); err != nil {
-					errCh <- err
+					errCh <- fmt.Errorf("target write: %w", err)
 					return
 				}
 			}
 		}
 	}()
 
-	<-errCh
+	reason := <-errCh
+	log.Printf("Server[%s]: session to %s ended: %v", sessionID, targetAddr, reason)
 }

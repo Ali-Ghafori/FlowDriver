@@ -198,6 +198,7 @@ func (e *Engine) flushAll(ctx context.Context) {
 			}
 			data := buf.Bytes()
 
+			uploaded := false
 			for attempt := range 3 {
 				if err := e.backend.Upload(ctx, fname, bytes.NewReader(data)); err != nil {
 					if attempt < 2 && ctx.Err() == nil {
@@ -205,9 +206,14 @@ func (e *Engine) flushAll(ctx context.Context) {
 						time.Sleep(time.Duration(1<<uint(attempt)) * time.Second)
 						continue
 					}
-					log.Printf("upload error %s: %v", fname, err)
+					log.Printf("upload DROPPED %s after 3 attempts: %v", fname, err)
+				} else {
+					uploaded = true
 				}
 				break
+			}
+			if !uploaded {
+				log.Printf("WARNING: data loss — %d envelopes dropped for %s", len(m), fname)
 			}
 		}(filename, mux)
 	}
@@ -399,6 +405,7 @@ func (e *Engine) RemoveSession(id string) {
 	e.sessionMu.Lock()
 	s := e.sessions[id]
 	delete(e.sessions, id)
+	log.Printf("Engine.RemoveSession: removed session %s (remaining: %d)", id, len(e.sessions))
 	// Set tombstone atomically while holding sessionMu so pollLoop's
 	// combined check (exists + tombstone) can never see a window where
 	// the session is gone but not yet tombstoned.
