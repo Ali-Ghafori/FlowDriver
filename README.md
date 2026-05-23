@@ -1,6 +1,6 @@
 # FlowDriverAI 🌊
 
-> **Optimized for AI CLI tools** — FlowDriverAI v1.3.2 has been specifically tuned for tunneling AI assistant traffic (Claude Code, OpenCode, Cursor, and others) through restrictive network environments. It achieves stable multi-hour sessions with minimal connection resets, making AI coding tools fully usable in censored regions.
+> **Fork of [FlowDriver](https://github.com/NullLatency/FlowDriver) by [NullLatency](https://github.com/NullLatency)** — enhanced and optimized specifically for AI CLI tools (Claude Code, OpenCode, Cursor, and others). Achieves stable multi-hour sessions with minimal connection resets, making AI coding tools fully usable in censored regions.
 
 **[فارسی](README.fa.md)** | English
 
