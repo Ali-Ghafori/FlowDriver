@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/NullLatency/flow-driver/internal/httpclient"
+	"github.com/Ali-Ghafori/flowdriverai/internal/httpclient"
 )
 
 // AppConfig defines the application-level overarching configuration.

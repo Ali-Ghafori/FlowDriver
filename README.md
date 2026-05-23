@@ -1,17 +1,17 @@
-# FlowDriver 🌊
+# FlowDriverAI 🌊
 
-> **Optimized for AI CLI tools** — FlowDriver v1.3.2 has been specifically tuned for tunneling AI assistant traffic (Claude Code, OpenCode, Cursor, and others) through restrictive network environments. It achieves stable multi-hour sessions with minimal connection resets, making AI coding tools fully usable in censored regions.
+> **Optimized for AI CLI tools** — FlowDriverAI v1.3.2 has been specifically tuned for tunneling AI assistant traffic (Claude Code, OpenCode, Cursor, and others) through restrictive network environments. It achieves stable multi-hour sessions with minimal connection resets, making AI coding tools fully usable in censored regions.
 
 **[فارسی](README.fa.md)** | English
 
 ---
 
-**FlowDriver** is a covert TCP tunnel that routes network traffic through Google Drive. Instead of direct TCP connections, data is packed into binary files, uploaded to a shared Google Drive folder, and reassembled at the other end — making all traffic appear as normal Google Drive API usage.
+**FlowDriverAI** is a covert TCP tunnel that routes network traffic through Google Drive. Instead of direct TCP connections, data is packed into binary files, uploaded to a shared Google Drive folder, and reassembled at the other end — making all traffic appear as normal Google Drive API usage.
 
 ## How It Works
 
 ```
-[Your App] → SOCKS5 → [FlowDriver Client] → Google Drive ← [FlowDriver Server] → [Target Server]
+[Your App] → SOCKS5 → [FlowDriverAI Client] → Google Drive ← [FlowDriverAI Server] → [Target Server]
 ```
 
 1. **Client** listens on a local SOCKS5 port. When your app connects, it bundles the TCP stream into binary `.bin` files and uploads them to a shared Google Drive folder.
@@ -139,8 +139,8 @@ Google Drive has strict API rate limits. Recommended configuration for AI API tr
 ## Build from Source
 
 ```bash
-git clone https://github.com/Ali-Ghafori/FlowDriver
-cd FlowDriver
+git clone https://github.com/Ali-Ghafori/FlowDriverAI
+cd FlowDriverAI
 go build -ldflags "-X main.version=v1.3.2" -o client ./cmd/client
 go build -ldflags "-X main.version=v1.3.2" -o server ./cmd/server
 ```

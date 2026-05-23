@@ -1,4 +1,4 @@
-module github.com/NullLatency/flow-driver
+module github.com/Ali-Ghafori/flowdriverai
 
 go 1.25.6
 

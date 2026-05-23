@@ -13,10 +13,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/NullLatency/flow-driver/internal/config"
-	"github.com/NullLatency/flow-driver/internal/httpclient"
-	"github.com/NullLatency/flow-driver/internal/storage"
-	"github.com/NullLatency/flow-driver/internal/transport"
+	"github.com/Ali-Ghafori/flowdriverai/internal/config"
+	"github.com/Ali-Ghafori/flowdriverai/internal/httpclient"
+	"github.com/Ali-Ghafori/flowdriverai/internal/storage"
+	"github.com/Ali-Ghafori/flowdriverai/internal/transport"
 	"github.com/things-go/go-socks5"
 	"github.com/things-go/go-socks5/statute"
 )
