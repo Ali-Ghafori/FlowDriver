@@ -63,6 +63,12 @@ func (v *VirtualConn) Read(b []byte) (n int, err error) {
 }
 
 func (v *VirtualConn) Write(b []byte) (n int, err error) {
+	v.session.mu.Lock()
+	closed := v.session.closed
+	v.session.mu.Unlock()
+	if closed {
+		return 0, net.ErrClosed
+	}
 	if len(b) > 0 {
 		v.session.EnqueueTx(b)
 	}

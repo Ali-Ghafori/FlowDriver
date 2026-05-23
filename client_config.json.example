@@ -3,7 +3,7 @@
   "storage_type": "google",
   "refresh_rate_ms": 400,
   "flush_rate_ms": 800,
-  "idle_timeout_sec": 300,
+  "idle_timeout_sec": 900,
   "transport": {
     "TargetIP": "216.239.38.120:443",
     "SNI": "google.com",

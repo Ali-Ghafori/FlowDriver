@@ -401,11 +401,25 @@ func (e *Engine) pollLoop(ctx context.Context) {
 	}
 }
 
+// CloseSession marks a session closed so the next flushAll tick sends a Close=true
+// envelope to the peer, then calls RemoveSession. Use this instead of RemoveSession
+// directly when the close reason must be propagated to the remote side (e.g. the
+// server-side target TCP connection dropped).
+func (e *Engine) CloseSession(id string) {
+	e.sessionMu.RLock()
+	s := e.sessions[id]
+	e.sessionMu.RUnlock()
+	if s != nil {
+		s.mu.Lock()
+		s.closed = true
+		s.mu.Unlock()
+	}
+}
+
 func (e *Engine) RemoveSession(id string) {
 	e.sessionMu.Lock()
 	s := e.sessions[id]
 	delete(e.sessions, id)
-	log.Printf("Engine.RemoveSession: removed session %s (remaining: %d)", id, len(e.sessions))
 	// Set tombstone atomically while holding sessionMu so pollLoop's
 	// combined check (exists + tombstone) can never see a window where
 	// the session is gone but not yet tombstoned.
@@ -414,8 +428,13 @@ func (e *Engine) RemoveSession(id string) {
 	e.closedSessionsMu.Unlock()
 	e.sessionMu.Unlock()
 
-	// Unblock any goroutine blocked on <-session.RxChan (e.g. server-side Rx→Conn loop)
 	if s != nil {
+		log.Printf("Engine.RemoveSession: removed session %s (remaining: %d)", id, func() int {
+			e.sessionMu.RLock()
+			defer e.sessionMu.RUnlock()
+			return len(e.sessions)
+		}())
+		// Unblock any goroutine blocked on <-session.RxChan (e.g. server-side Rx→Conn loop)
 		s.mu.Lock()
 		if !s.rxClosed {
 			s.rxClosed = true

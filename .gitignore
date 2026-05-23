@@ -1,5 +1,6 @@
 *.json
 bin/
+dist/
 *.tmp
 *~
 .DS_Store

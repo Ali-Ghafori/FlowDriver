@@ -84,14 +84,16 @@ jobs:
 
           # Build Server
           CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} GOARM=${{ matrix.goarm }} go build -ldflags="-s -w -X main.version=${VERSION}" -o $SERVER_FOLDER/server$SUFFIX ./cmd/server
-          
+
           # Copy and rename config files
           cp client_config.json.example $CLIENT_FOLDER/client_config.json
           cp server_config.json.example $SERVER_FOLDER/server_config.json
-          
-          # Copy README
+
+          # Copy READMEs
           cp README.md $CLIENT_FOLDER/
           cp README.md $SERVER_FOLDER/
+          cp README.fa.md $CLIENT_FOLDER/
+          cp README.fa.md $SERVER_FOLDER/
           
           # Zip the folders
           zip -r "${CLIENT_FOLDER}.zip" $CLIENT_FOLDER
