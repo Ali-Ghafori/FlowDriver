@@ -326,11 +326,11 @@ func (e *Engine) pollLoop(ctx context.Context) {
 					rc, err := e.backend.Download(ctx, fname)
 					if err != nil {
 						if strings.Contains(err.Error(), "404") {
-							// File was cleaned up by peer before we downloaded it; keep in
-							// processed map so we don't re-attempt a permanently gone file.
-							log.Printf("download 404 (cleanup race): %s", fname)
+							// File deleted by peer's cleanup before we downloaded it.
+							// Keep it in the processed map — no retry, it's gone.
+							log.Printf("download 404 (cleanup race, increase idle window if frequent): %s", fname)
 						} else {
-							// Transient error — remove from processed to retry next poll.
+							// Transient error — remove from processed to retry next poll
 							log.Printf("download error %s: %v", fname, err)
 							e.processedMu.Lock()
 							delete(e.processed, fname)
@@ -360,8 +360,8 @@ func (e *Engine) pollLoop(ctx context.Context) {
 						count++
 
 						// Process envelope — check tombstone + session existence atomically
-						// under sessionMu to prevent the TOCTOU race where RemoveSession
-						// runs between our tombstone check and our session-map lookup.
+						// under sessionMu to prevent the TOCTOU race where a session is
+						// removed and re-created before its tombstone is visible.
 						e.sessionMu.Lock()
 						e.closedSessionsMu.Lock()
 						_, tombstoned := e.closedSessions[env.SessionID]
@@ -494,7 +494,7 @@ func (e *Engine) cleanupLoop(ctx context.Context) {
 					ts, err := strconv.ParseInt(tsStr, 10, 64)
 					if err == nil {
 						t := time.Unix(0, ts)
-						if time.Since(t) > 10*time.Second {
+						if time.Since(t) > 60*time.Second {
 							e.backend.Delete(ctx, f)
 						}
 					}
