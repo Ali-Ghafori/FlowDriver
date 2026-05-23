@@ -325,10 +325,17 @@ func (e *Engine) pollLoop(ctx context.Context) {
 					// log.Printf("Engine.pollLoop: Downloading %s", fname)
 					rc, err := e.backend.Download(ctx, fname)
 					if err != nil {
-						log.Printf("download error %s: %v", fname, err)
-						e.processedMu.Lock()
-						delete(e.processed, fname) // failed to download, retry next poll
-						e.processedMu.Unlock()
+						if strings.Contains(err.Error(), "404") {
+							// File was cleaned up by peer before we downloaded it; keep in
+							// processed map so we don't re-attempt a permanently gone file.
+							log.Printf("download 404 (cleanup race): %s", fname)
+						} else {
+							// Transient error — remove from processed to retry next poll.
+							log.Printf("download error %s: %v", fname, err)
+							e.processedMu.Lock()
+							delete(e.processed, fname)
+							e.processedMu.Unlock()
+						}
 						return
 					}
 					defer rc.Close()
@@ -352,17 +359,15 @@ func (e *Engine) pollLoop(ctx context.Context) {
 						}
 						count++
 
-						// Process envelope immediately
-						e.closedSessionsMu.Lock()
-						if _, exists := e.closedSessions[env.SessionID]; exists {
-							e.closedSessionsMu.Unlock()
-							continue
-						}
-						e.closedSessionsMu.Unlock()
-
+						// Process envelope — check tombstone + session existence atomically
+						// under sessionMu to prevent the TOCTOU race where RemoveSession
+						// runs between our tombstone check and our session-map lookup.
 						e.sessionMu.Lock()
+						e.closedSessionsMu.Lock()
+						_, tombstoned := e.closedSessions[env.SessionID]
+						e.closedSessionsMu.Unlock()
 						s, exists := e.sessions[env.SessionID]
-						if !exists && e.myDir == DirRes && e.OnNewSession != nil {
+						if !exists && !tombstoned && e.myDir == DirRes && e.OnNewSession != nil {
 							s = NewSession(env.SessionID)
 							s.ClientID = fileClientID
 							e.sessions[env.SessionID] = s
@@ -371,6 +376,9 @@ func (e *Engine) pollLoop(ctx context.Context) {
 							e.OnNewSession(env.SessionID, env.TargetAddr, s)
 						} else {
 							e.sessionMu.Unlock()
+							if tombstoned {
+								continue
+							}
 						}
 
 						if s != nil {
@@ -390,6 +398,21 @@ func (e *Engine) pollLoop(ctx context.Context) {
 			time.Sleep(100 * time.Millisecond)
 			goto pollAgain
 		}
+	}
+}
+
+// CloseSession marks a session closed so the next flushAll tick sends a Close=true
+// envelope to the peer, then calls RemoveSession. Use this instead of RemoveSession
+// directly when the close reason must be propagated to the remote side (e.g. the
+// server-side target TCP connection dropped).
+func (e *Engine) CloseSession(id string) {
+	e.sessionMu.RLock()
+	s := e.sessions[id]
+	e.sessionMu.RUnlock()
+	if s != nil {
+		s.mu.Lock()
+		s.closed = true
+		s.mu.Unlock()
 	}
 }
 

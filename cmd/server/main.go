@@ -113,7 +113,10 @@ func main() {
 }
 
 func handleServerConn(sessionID, targetAddr string, session *transport.Session, engine *transport.Engine) {
-	defer engine.RemoveSession(sessionID)
+	// Mark the session closed on exit so flushAll sends a Close=true envelope
+	// to the client before removing the session. This lets the client's
+	// VirtualConn return a clean EOF instead of silently going zombie.
+	defer engine.CloseSession(sessionID)
 
 	log.Printf("Server[%s]: dialing %s", sessionID, targetAddr)
 	conn, err := net.Dial("tcp", targetAddr)
