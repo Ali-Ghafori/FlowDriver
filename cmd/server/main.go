@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -16,13 +17,27 @@ import (
 	"github.com/NullLatency/flow-driver/internal/transport"
 )
 
+// version is set at build time via -ldflags "-X main.version=vX.Y.Z"
+var version = "dev"
+
 func main() {
-	var configPath, gcPath string
+	var configPath, gcPath, logPath string
 	flag.StringVar(&configPath, "c", "config.json", "Path to config file")
 	flag.StringVar(&gcPath, "gc", "credentials.json", "Path to Google Service Account JSON")
+	flag.StringVar(&logPath, "log", "", "Path to log file (default: stdout only)")
 	flag.Parse()
 
-	log.Println("Starting Flow Server...")
+	if logPath != "" {
+		f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			log.Fatalf("Failed to open log file %s: %v", logPath, err)
+		}
+		defer f.Close()
+		log.SetOutput(io.MultiWriter(os.Stdout, f))
+		log.Printf("Logging to %s", logPath)
+	}
+
+	log.Printf("Starting Flow Server %s...", version)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -100,12 +115,13 @@ func main() {
 func handleServerConn(sessionID, targetAddr string, session *transport.Session, engine *transport.Engine) {
 	defer engine.RemoveSession(sessionID)
 
+	log.Printf("Server[%s]: dialing %s", sessionID, targetAddr)
 	conn, err := net.Dial("tcp", targetAddr)
 	if err != nil {
-		log.Printf("Dial error to %s: %v", targetAddr, err)
-		// Send back a close packet? Just closing the session will notify client
+		log.Printf("Server[%s]: dial FAILED to %s: %v", sessionID, targetAddr, err)
 		return
 	}
+	log.Printf("Server[%s]: connected to %s", sessionID, targetAddr)
 	defer conn.Close()
 
 	errCh := make(chan error, 2)
@@ -119,7 +135,7 @@ func handleServerConn(sessionID, targetAddr string, session *transport.Session, 
 				session.EnqueueTx(buf[:n])
 			}
 			if err != nil {
-				errCh <- err
+				errCh <- fmt.Errorf("target read: %w", err)
 				return
 			}
 		}
@@ -135,12 +151,13 @@ func handleServerConn(sessionID, targetAddr string, session *transport.Session, 
 			}
 			if len(data) > 0 {
 				if _, err := conn.Write(data); err != nil {
-					errCh <- err
+					errCh <- fmt.Errorf("target write: %w", err)
 					return
 				}
 			}
 		}
 	}()
 
-	<-errCh
+	reason := <-errCh
+	log.Printf("Server[%s]: session to %s ended: %v", sessionID, targetAddr, reason)
 }
